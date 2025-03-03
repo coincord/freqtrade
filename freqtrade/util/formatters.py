@@ -16,7 +16,7 @@ def strip_trailing_zeros(value: str) -> str:
     :param value: Value to be stripped
     :return: Stripped value
     """
-    return value.rstrip('0').rstrip('.')
+    return value.rstrip("0").rstrip(".")
 
 
 def round_value(value: float, decimals: int, keep_trailing_zeros=False) -> str:
@@ -33,8 +33,7 @@ def round_value(value: float, decimals: int, keep_trailing_zeros=False) -> str:
     return val
 
 
-def fmt_coin(
-        value: float, coin: str, show_coin_name=True, keep_trailing_zeros=False) -> str:
+def fmt_coin(value: float, coin: str, show_coin_name=True, keep_trailing_zeros=False) -> str:
     """
     Format price value for this coin
     :param value: Value to be printed
@@ -44,6 +43,25 @@ def fmt_coin(
     :return: Formatted / rounded value (with or without coin name)
     """
     val = round_value(value, decimals_per_coin(coin), keep_trailing_zeros)
+    if show_coin_name:
+        val = f"{val} {coin}"
+
+    return val
+
+
+def fmt_coin2(
+    value: float, coin: str, decimals: int = 8, *, show_coin_name=True, keep_trailing_zeros=False
+) -> str:
+    """
+    Format price value for this coin. Should be preferred for rate formatting
+    :param value: Value to be printed
+    :param coin: Which coin are we printing the price / value for
+    :param decimals: Number of decimals to round to
+    :param show_coin_name: Return string in format: "222.22 USDT" or "222.22"
+    :param keep_trailing_zeros: Keep trailing zeros "222.200" vs. "222.2"
+    :return: Formatted / rounded value (with or without coin name)
+    """
+    val = round_value(value, decimals, keep_trailing_zeros)
     if show_coin_name:
         val = f"{val} {coin}"
 

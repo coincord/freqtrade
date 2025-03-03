@@ -14,10 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: "3.12"
 
 
     - name: Install pre-commit
@@ -26,10 +28,7 @@ jobs:
     - name: Run auto-update
       run: pre-commit autoupdate
 
-    - name: Run pre-commit
-      run: pre-commit run --all-files
-
-    - uses: peter-evans/create-pull-request@v6
+    - uses: peter-evans/create-pull-request@v7
       with:
         token: ${{ secrets.REPO_SCOPED_TOKEN }}
         add-paths: .pre-commit-config.yaml
@@ -39,6 +38,7 @@ jobs:
         branch: update/pre-commit-hooks
         title: Update pre-commit hooks
         commit-message: "chore: update pre-commit hooks"
-        committer: Freqtrade Bot <noreply@github.com>
+        committer: Freqtrade Bot <154552126+freqtrade-bot@users.noreply.github.com>
+        author: Freqtrade Bot <154552126+freqtrade-bot@users.noreply.github.com>
         body: Update versions of pre-commit hooks to latest version.
         delete-branch: true

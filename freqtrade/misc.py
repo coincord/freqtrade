@@ -1,11 +1,13 @@
 """
 Various tool function for Freqtrade and scripts
 """
+
 import gzip
 import logging
+from collections.abc import Iterator, Mapping
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Mapping, Optional, TextIO, Union
+from typing import Any, TextIO
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -15,6 +17,15 @@ from freqtrade.enums import SignalTagType, SignalType
 
 
 logger = logging.getLogger(__name__)
+
+
+def dump_json_to_file(file_obj: TextIO, data: Any) -> None:
+    """
+    Dump JSON data into a file object
+    :param file_obj: File object to write to
+    :param data: JSON Data to save
+    """
+    rapidjson.dump(data, file_obj, default=str, number_mode=rapidjson.NM_NATIVE)
 
 
 def file_dump_json(filename: Path, data: Any, is_zip: bool = False, log: bool = True) -> None:
@@ -27,39 +38,23 @@ def file_dump_json(filename: Path, data: Any, is_zip: bool = False, log: bool = 
     """
 
     if is_zip:
-        if filename.suffix != '.gz':
-            filename = filename.with_suffix('.gz')
+        if filename.suffix != ".gz":
+            filename = filename.with_suffix(".gz")
         if log:
             logger.info(f'dumping json to "{filename}"')
 
-        with gzip.open(filename, 'w') as fpz:
-            rapidjson.dump(data, fpz, default=str, number_mode=rapidjson.NM_NATIVE)
+        with gzip.open(filename, "wt", encoding="utf-8") as fpz:
+            dump_json_to_file(fpz, data)
     else:
         if log:
             logger.info(f'dumping json to "{filename}"')
-        with filename.open('w') as fp:
-            rapidjson.dump(data, fp, default=str, number_mode=rapidjson.NM_NATIVE)
+        with filename.open("w") as fp:
+            dump_json_to_file(fp, data)
 
     logger.debug(f'done json to "{filename}"')
 
 
-def file_dump_joblib(filename: Path, data: Any, log: bool = True) -> None:
-    """
-    Dump object data into a file
-    :param filename: file to create
-    :param data: Object data to save
-    :return:
-    """
-    import joblib
-
-    if log:
-        logger.info(f'dumping joblib to "{filename}"')
-    with filename.open('wb') as fp:
-        joblib.dump(data, fp)
-    logger.debug(f'done joblib dump to "{filename}"')
-
-
-def json_load(datafile: Union[gzip.GzipFile, TextIO]) -> Any:
+def json_load(datafile: TextIO) -> Any:
     """
     load data with rapidjson
     Use this to have a consistent experience,
@@ -69,15 +64,14 @@ def json_load(datafile: Union[gzip.GzipFile, TextIO]) -> Any:
 
 
 def file_load_json(file: Path):
-
     if file.suffix != ".gz":
-        gzipfile = file.with_suffix(file.suffix + '.gz')
+        gzipfile = file.with_suffix(file.suffix + ".gz")
     else:
         gzipfile = file
     # Try gzip file first, otherwise regular json file.
     if gzipfile.is_file():
         logger.debug(f"Loading historical data from file {gzipfile}")
-        with gzip.open(gzipfile) as datafile:
+        with gzip.open(gzipfile, "rt", encoding="utf-8") as datafile:
             pairdata = json_load(datafile)
     elif file.is_file():
         logger.debug(f"Loading historical data from file {file}")
@@ -96,8 +90,8 @@ def is_file_in_dir(file: Path, directory: Path) -> bool:
 
 
 def pair_to_filename(pair: str) -> str:
-    for ch in ['/', ' ', '.', '@', '$', '+', ':']:
-        pair = pair.replace(ch, '_')
+    for ch in ["/", " ", ".", "@", "$", "+", ":"]:
+        pair = pair.replace(ch, "_")
     return pair
 
 
@@ -128,7 +122,10 @@ def round_dict(d, n):
     return {k: (round(v, n) if isinstance(v, float) else v) for k, v in d.items()}
 
 
-def safe_value_fallback(obj: dict, key1: str, key2: Optional[str] = None, default_value=None):
+DictMap = dict[str, Any] | Mapping[str, Any]
+
+
+def safe_value_fallback(obj: DictMap, key1: str, key2: str | None = None, default_value=None):
     """
     Search a value in obj, return this if it's not None.
     Then search key2 in obj - return that if it's not none - then use default_value.
@@ -142,10 +139,7 @@ def safe_value_fallback(obj: dict, key1: str, key2: Optional[str] = None, defaul
     return default_value
 
 
-dictMap = Union[Dict[str, Any], Mapping[str, Any]]
-
-
-def safe_value_fallback2(dict1: dictMap, dict2: dictMap, key1: str, key2: str, default_value=None):
+def safe_value_fallback2(dict1: DictMap, dict2: DictMap, key1: str, key2: str, default_value=None):
     """
     Search a value in dict1, return this if it's not None.
     Fall back to dict2 - return key2 from dict2 if it's not None.
@@ -160,11 +154,11 @@ def safe_value_fallback2(dict1: dictMap, dict2: dictMap, key1: str, key2: str, d
     return default_value
 
 
-def plural(num: float, singular: str, plural: Optional[str] = None) -> str:
-    return singular if (num == 1 or num == -1) else plural or singular + 's'
+def plural(num: float, singular: str, plural: str | None = None) -> str:
+    return singular if (num == 1 or num == -1) else plural or singular + "s"
 
 
-def chunks(lst: List[Any], n: int) -> Iterator[List[Any]]:
+def chunks(lst: list[Any], n: int) -> Iterator[list[Any]]:
     """
     Split lst into chunks of the size n.
     :param lst: list to split into chunks
@@ -172,7 +166,7 @@ def chunks(lst: List[Any], n: int) -> Iterator[List[Any]]:
     :return: None
     """
     for chunk in range(0, len(lst), n):
-        yield (lst[chunk:chunk + n])
+        yield (lst[chunk : chunk + n])
 
 
 def parse_db_uri_for_logging(uri: str):
@@ -184,8 +178,8 @@ def parse_db_uri_for_logging(uri: str):
     parsed_db_uri = urlparse(uri)
     if not parsed_db_uri.netloc:  # No need for censoring as no password was provided
         return uri
-    pwd = parsed_db_uri.netloc.split(':')[1].split('@')[0]
-    return parsed_db_uri.geturl().replace(f':{pwd}@', ':*****@')
+    pwd = parsed_db_uri.netloc.split(":")[1].split("@")[0]
+    return parsed_db_uri.geturl().replace(f":{pwd}@", ":*****@")
 
 
 def dataframe_to_json(dataframe: pd.DataFrame) -> str:
@@ -194,7 +188,7 @@ def dataframe_to_json(dataframe: pd.DataFrame) -> str:
     :param dataframe: A pandas DataFrame
     :returns: A JSON string of the pandas DataFrame
     """
-    return dataframe.to_json(orient='split')
+    return dataframe.to_json(orient="split")
 
 
 def json_to_dataframe(data: str) -> pd.DataFrame:
@@ -203,9 +197,9 @@ def json_to_dataframe(data: str) -> pd.DataFrame:
     :param data: A JSON string
     :returns: A pandas DataFrame from the JSON string
     """
-    dataframe = pd.read_json(StringIO(data), orient='split')
-    if 'date' in dataframe.columns:
-        dataframe['date'] = pd.to_datetime(dataframe['date'], unit='ms', utc=True)
+    dataframe = pd.read_json(StringIO(data), orient="split")
+    if "date" in dataframe.columns:
+        dataframe["date"] = pd.to_datetime(dataframe["date"], unit="ms", utc=True)
 
     return dataframe
 
@@ -234,7 +228,7 @@ def append_candles_to_dataframe(left: pd.DataFrame, right: pd.DataFrame) -> pd.D
     :param right: The new dataframe containing the data you want appended
     :returns: The dataframe with the right data in it
     """
-    if left.iloc[-1]['date'] != right.iloc[-1]['date']:
+    if left.iloc[-1]["date"] != right.iloc[-1]["date"]:
         left = pd.concat([left, right])
 
     # Only keep the last 1500 candles in memory

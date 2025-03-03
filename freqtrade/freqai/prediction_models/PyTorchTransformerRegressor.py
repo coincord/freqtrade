@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -7,8 +7,10 @@ import torch
 
 from freqtrade.freqai.base_models.BasePyTorchRegressor import BasePyTorchRegressor
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
-from freqtrade.freqai.torch.PyTorchDataConvertor import (DefaultPyTorchDataConvertor,
-                                                         PyTorchDataConvertor)
+from freqtrade.freqai.torch.PyTorchDataConvertor import (
+    DefaultPyTorchDataConvertor,
+    PyTorchDataConvertor,
+)
 from freqtrade.freqai.torch.PyTorchModelTrainer import PyTorchTransformerTrainer
 from freqtrade.freqai.torch.PyTorchTransformerModel import PyTorchTransformerModel
 
@@ -57,11 +59,11 @@ class PyTorchTransformerRegressor(BasePyTorchRegressor):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         config = self.freqai_info.get("model_training_parameters", {})
-        self.learning_rate: float = config.get("learning_rate",  3e-4)
-        self.model_kwargs: Dict[str, Any] = config.get("model_kwargs",  {})
-        self.trainer_kwargs: Dict[str, Any] = config.get("trainer_kwargs",  {})
+        self.learning_rate: float = config.get("learning_rate", 3e-4)
+        self.model_kwargs: dict[str, Any] = config.get("model_kwargs", {})
+        self.trainer_kwargs: dict[str, Any] = config.get("trainer_kwargs", {})
 
-    def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
+    def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
         User sets up the training and test data to fit their desired model here
         :param data_dictionary: the dictionary holding all data for train, test,
@@ -75,7 +77,7 @@ class PyTorchTransformerRegressor(BasePyTorchRegressor):
             input_dim=n_features,
             output_dim=n_labels,
             time_window=self.window_size,
-            **self.model_kwargs
+            **self.model_kwargs,
         )
         model.to(self.device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate)
@@ -98,7 +100,7 @@ class PyTorchTransformerRegressor(BasePyTorchRegressor):
 
     def predict(
         self, unfiltered_df: pd.DataFrame, dk: FreqaiDataKitchen, **kwargs
-    ) -> Tuple[pd.DataFrame, npt.NDArray[np.int_]]:
+    ) -> tuple[pd.DataFrame, npt.NDArray[np.int_]]:
         """
         Filter the prediction features data and predict with it.
         :param unfiltered_df: Full dataframe for the current backtest period.
@@ -114,11 +116,11 @@ class PyTorchTransformerRegressor(BasePyTorchRegressor):
         )
 
         dk.data_dictionary["prediction_features"], outliers, _ = dk.feature_pipeline.transform(
-            dk.data_dictionary["prediction_features"], outlier_check=True)
+            dk.data_dictionary["prediction_features"], outlier_check=True
+        )
 
         x = self.data_convertor.convert_x(
-            dk.data_dictionary["prediction_features"],
-            device=self.device
+            dk.data_dictionary["prediction_features"], device=self.device
         )
         # if user is asking for multiple predictions, slide the window
         # along the tensor
@@ -129,7 +131,7 @@ class PyTorchTransformerRegressor(BasePyTorchRegressor):
         if x.shape[1] > self.window_size:
             ws = self.window_size
             for i in range(0, x.shape[1] - ws):
-                xb = x[:, i:i + ws, :].to(self.device)
+                xb = x[:, i : i + ws, :].to(self.device)
                 y = self.model.model(xb)
                 yb = torch.cat((yb, y), dim=1)
         else:
@@ -139,14 +141,15 @@ class PyTorchTransformerRegressor(BasePyTorchRegressor):
         pred_df = pd.DataFrame(yb.detach().numpy(), columns=dk.label_list)
         pred_df, _, _ = dk.label_pipeline.inverse_transform(pred_df)
 
-        if self.freqai_info.get("DI_threshold", 0) > 0:
+        if self.ft_params.get("DI_threshold", 0) > 0:
             dk.DI_values = dk.feature_pipeline["di"].di_values
         else:
             dk.DI_values = np.zeros(outliers.shape[0])
         dk.do_predict = outliers
 
         if x.shape[1] > 1:
-            zeros_df = pd.DataFrame(np.zeros((x.shape[1] - len(pred_df), len(pred_df.columns))),
-                                    columns=pred_df.columns)
+            zeros_df = pd.DataFrame(
+                np.zeros((x.shape[1] - len(pred_df), len(pred_df.columns))), columns=pred_df.columns
+            )
             pred_df = pd.concat([zeros_df, pred_df], axis=0, ignore_index=True)
         return (pred_df, dk.do_predict)

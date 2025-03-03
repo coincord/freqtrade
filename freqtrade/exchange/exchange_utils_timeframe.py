@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import Optional
 
 import ccxt
 from ccxt import ROUND_DOWN, ROUND_UP
@@ -36,22 +35,22 @@ def timeframe_to_resample_freq(timeframe: str) -> str:
     form ('1m', '5m', '1h', '1d', '1w', etc.) to the resample frequency
     used by pandas ('1T', '5T', '1H', '1D', '1W', etc.)
     """
-    if timeframe == '1y':
-        return '1YS'
+    if timeframe == "1y":
+        return "1YS"
     timeframe_seconds = timeframe_to_seconds(timeframe)
     timeframe_minutes = timeframe_seconds // 60
-    resample_interval = f'{timeframe_seconds}s'
+    resample_interval = f"{timeframe_seconds}s"
     if 10000 < timeframe_minutes < 43200:
-        resample_interval = '1W-MON'
+        resample_interval = "1W-MON"
     elif timeframe_minutes >= 43200 and timeframe_minutes < 525600:
         # Monthly candles need special treatment to stick to the 1st of the month
-        resample_interval = f'{timeframe}S'
+        resample_interval = f"{timeframe}S"
     elif timeframe_minutes > 43200:
         resample_interval = timeframe
     return resample_interval
 
 
-def timeframe_to_prev_date(timeframe: str, date: Optional[datetime] = None) -> datetime:
+def timeframe_to_prev_date(timeframe: str, date: datetime | None = None) -> datetime:
     """
     Use Timeframe and determine the candle start date for this date.
     Does not round when given a candle start date.
@@ -62,12 +61,11 @@ def timeframe_to_prev_date(timeframe: str, date: Optional[datetime] = None) -> d
     if not date:
         date = datetime.now(timezone.utc)
 
-    new_timestamp = ccxt.Exchange.round_timeframe(
-        timeframe, dt_ts(date), ROUND_DOWN) // 1000
+    new_timestamp = ccxt.Exchange.round_timeframe(timeframe, dt_ts(date), ROUND_DOWN) // 1000
     return dt_from_ts(new_timestamp)
 
 
-def timeframe_to_next_date(timeframe: str, date: Optional[datetime] = None) -> datetime:
+def timeframe_to_next_date(timeframe: str, date: datetime | None = None) -> datetime:
     """
     Use Timeframe and determine next candle.
     :param timeframe: timeframe in string format (e.g. "5m")
@@ -76,6 +74,5 @@ def timeframe_to_next_date(timeframe: str, date: Optional[datetime] = None) -> d
     """
     if not date:
         date = datetime.now(timezone.utc)
-    new_timestamp = ccxt.Exchange.round_timeframe(
-        timeframe, dt_ts(date), ROUND_UP) // 1000
+    new_timestamp = ccxt.Exchange.round_timeframe(timeframe, dt_ts(date), ROUND_UP) // 1000
     return dt_from_ts(new_timestamp)

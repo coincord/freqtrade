@@ -181,10 +181,10 @@ def test_trade_fromjson():
     Trade.commit()
 
     assert trade.id == 25
-    assert trade.pair == 'ETH/USDT'
+    assert trade.pair == "ETH/USDT"
     assert trade.open_date_utc == datetime(2022, 10, 18, 9, 12, 42, tzinfo=timezone.utc)
     assert isinstance(trade.open_date, datetime)
-    assert trade.exit_reason == 'no longer good'
+    assert trade.exit_reason == "no longer good"
     assert trade.realized_profit == 2.76315361
     assert trade.precision_mode == 2
     assert trade.amount_precision == 1.0
@@ -199,7 +199,6 @@ def test_trade_fromjson():
 
 @pytest.mark.usefixtures("init_persistence")
 def test_trade_serialize_load_back(fee):
-
     create_mock_trades_usdt(fee, None)
 
     t = Trade.get_trades([Trade.id == 1]).first()
@@ -219,12 +218,22 @@ def test_trade_serialize_load_back(fee):
     assert len(trade.orders) == len(t.orders)
     assert trade.orders[0].funding_fee == t.orders[0].funding_fee
     excluded = [
-        'trade_id', 'quote_currency', 'open_timestamp', 'close_timestamp',
-        'realized_profit_ratio', 'close_profit_pct',
-        'trade_duration_s', 'trade_duration',
-        'profit_ratio', 'profit_pct', 'profit_abs', 'stop_loss_abs',
-        'initial_stop_loss_abs', 'open_fill_date', 'open_fill_timestamp',
-        'orders',
+        "trade_id",
+        "quote_currency",
+        "open_timestamp",
+        "close_timestamp",
+        "realized_profit_ratio",
+        "close_profit_pct",
+        "trade_duration_s",
+        "trade_duration",
+        "profit_ratio",
+        "profit_pct",
+        "profit_abs",
+        "stop_loss_abs",
+        "initial_stop_loss_abs",
+        "open_fill_date",
+        "open_fill_timestamp",
+        "orders",
     ]
     failed = []
     # Ensure all attributes written can be read.
@@ -233,29 +242,33 @@ def test_trade_serialize_load_back(fee):
             continue
         tattr = getattr(trade, obj, None)
         if isinstance(tattr, datetime):
-            tattr = tattr.strftime('%Y-%m-%d %H:%M:%S')
+            tattr = tattr.strftime("%Y-%m-%d %H:%M:%S")
         if tattr != value:
             failed.append((obj, tattr, value))
 
-    assert tjson.get('trade_id') == trade.id
-    assert tjson.get('quote_currency') == trade.stake_currency
-    assert tjson.get('stop_loss_abs') == trade.stop_loss
-    assert tjson.get('initial_stop_loss_abs') == trade.initial_stop_loss
+    assert tjson.get("trade_id") == trade.id
+    assert tjson.get("quote_currency") == trade.stake_currency
+    assert tjson.get("stop_loss_abs") == trade.stop_loss
+    assert tjson.get("initial_stop_loss_abs") == trade.initial_stop_loss
 
     excluded_o = [
-        'order_filled_timestamp', 'ft_is_entry', 'pair', 'is_open', 'order_timestamp',
+        "order_filled_timestamp",
+        "ft_is_entry",
+        "pair",
+        "is_open",
+        "order_timestamp",
     ]
     order_obj = trade.orders[0]
-    for obj, value in tjson['orders'][0].items():
+    for obj, value in tjson["orders"][0].items():
         if obj in excluded_o:
             continue
         tattr = getattr(order_obj, obj, None)
         if isinstance(tattr, datetime):
-            tattr = tattr.strftime('%Y-%m-%d %H:%M:%S')
+            tattr = tattr.strftime("%Y-%m-%d %H:%M:%S")
         if tattr != value:
             failed.append((obj, tattr, value))
 
-    assert tjson['orders'][0]['pair'] == order_obj.ft_pair
+    assert tjson["orders"][0]["pair"] == order_obj.ft_pair
     assert not failed
 
     trade2 = LocalTrade.from_json(trade_string)
@@ -263,3 +276,67 @@ def test_trade_serialize_load_back(fee):
 
     trade3 = LocalTrade.from_json(trade_string)
     assert len(trade3.orders) == len(t.orders)
+
+
+@pytest.mark.usefixtures("init_persistence")
+def test_trade_fromjson_backtesting():
+    """
+    trade.from_json should be able to load a trade output via backtesting.
+    """
+    trade_string = """
+        {
+             "pair":"XRP/USDT:USDT",
+             "stake_amount":3015.294001,
+             "max_stake_amount":60305.88002,
+             "amount":94612.3,
+             "open_date":"2024-03-02 10:40:00+00:00",
+             "close_date":"2024-03-02 11:10:00+00:00",
+             "open_rate":0.6374,
+             "close_rate":0.6399,
+             "fee_open":0.0005,
+             "fee_close":0.0005,
+             "trade_duration":30,
+             "profit_ratio":-0.09853216535933962,
+             "profit_abs":-296.95489539,
+             "exit_reason":"trailing_stop_loss",
+             "initial_stop_loss_abs":0.6689,
+             "initial_stop_loss_ratio":-0.99,
+             "stop_loss_abs":0.6399,
+             "stop_loss_ratio":-0.3368287257705749,
+             "min_rate":0.6294,
+             "max_rate":0.6421,
+             "is_open":false,
+             "enter_tag":"[0.6373, 0.5993, 0.64]",
+             "leverage":20,
+             "is_short":true,
+             "open_timestamp":1709376000000,
+             "close_timestamp":1709377800000,
+             "orders":[
+                {
+                   "amount":94612.3,
+                   "safe_price":0.6374,
+                   "ft_order_side":"sell",
+                   "order_filled_timestamp":1709376000000,
+                   "ft_is_entry":true,
+                   "ft_order_tag":"[0.6373, 0.5993, 0.64]",
+                   "cost":60336.032960009994
+                },
+                {
+                   "amount":94612.3,
+                   "safe_price":0.6399,
+                   "ft_order_side":"buy",
+                   "order_filled_timestamp":1709377800000,
+                   "ft_is_entry":false,
+                   "ft_order_tag":"trailing_stop_loss",
+                   "cost":60572.681975385
+                }
+             ]
+          }
+        """
+
+    trade = Trade.from_json(trade_string)
+    Trade.session.add(trade)
+    Trade.commit()
+
+    # Trade-id not given - use first available
+    assert trade.id == 1
