@@ -26,6 +26,8 @@ __MESSAGE_TYPE_DICT: dict[str, dict[str, str]] = {x: {"type": "object"} for x in
 
 __IN_STRATEGY = "\nUsually specified in the strategy and missing in the configuration."
 
+__VIA_ENV = "Recommended to be set via environment variable"
+
 CONF_SCHEMA = {
     "type": "object",
     "properties": {
@@ -421,9 +423,9 @@ CONF_SCHEMA = {
             "description": "Exchange configuration.",
             "$ref": "#/definitions/exchange",
         },
-        "edge": {
-            "description": "Edge configuration.",
-            "$ref": "#/definitions/edge",
+        "log_config": {
+            "description": "Logging configuration.",
+            "$ref": "#/definitions/logging",
         },
         "freqai": {
             "description": "FreqAI configuration.",
@@ -464,12 +466,23 @@ CONF_SCHEMA = {
                 },
                 "token": {"description": "Telegram bot token.", "type": "string"},
                 "chat_id": {
-                    "description": "Telegram chat or group ID",
+                    "description": (
+                        f"Telegram chat or group ID. {__VIA_ENV} FREQTRADE__TELEGRAM__CHAT_ID"
+                    ),
                     "type": "string",
                 },
                 "topic_id": {
-                    "description": "Telegram topic ID - only applicable for group chats",
+                    "description": (
+                        "Telegram topic ID - only applicable for group chats. "
+                        f"{__VIA_ENV} FREQTRADE__TELEGRAM__TOPIC_ID"
+                    ),
                     "type": "string",
+                },
+                "authorized_users": {
+                    "description": "Authorized users for the bot.",
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "uniqueItems": True,
                 },
                 "allow_custom_messages": {
                     "description": "Allow sending custom messages from the Strategy.",
@@ -564,8 +577,11 @@ CONF_SCHEMA = {
             "description": "Webhook settings.",
             "type": "object",
             "properties": {
-                "enabled": {"type": "boolean"},
-                "url": {"type": "string"},
+                "enabled": {"description": "Enable webhook notifications.", "type": "boolean"},
+                "url": {
+                    "description": f"Webhook URL. {__VIA_ENV} FREQTRADE__WEBHOOK__URL",
+                    "type": "string",
+                },
                 "format": {"type": "string", "enum": WEBHOOK_FORMAT_OPTIONS, "default": "form"},
                 "retries": {"type": "integer", "minimum": 0},
                 "retry_delay": {"type": "number", "minimum": 0},
@@ -577,7 +593,12 @@ CONF_SCHEMA = {
             "type": "object",
             "properties": {
                 "enabled": {"type": "boolean"},
-                "webhook_url": {"type": "string"},
+                "webhook_url": {
+                    "description": (
+                        f"Discord webhook URL. {__VIA_ENV} FREQTRADE__DISCORD__WEBHOOK_URL"
+                    ),
+                    "type": "string",
+                },
                 "exit_fill": {
                     "type": "array",
                     "items": {"type": "object"},
@@ -679,7 +700,7 @@ CONF_SCHEMA = {
         "initial_state": {
             "description": "Initial state of the system.",
             "type": "string",
-            "enum": ["running", "stopped"],
+            "enum": ["running", "paused", "stopped"],
         },
         "force_entry_enable": {
             "description": "Force enable entry.",
@@ -796,27 +817,57 @@ CONF_SCHEMA = {
             "type": "object",
             "properties": {
                 "name": {"description": "Name of the exchange.", "type": "string"},
-                "enable_ws": {
-                    "description": "Enable WebSocket connections to the exchange.",
-                    "type": "boolean",
-                    "default": True,
-                },
                 "key": {
-                    "description": "API key for the exchange.",
+                    "description": (
+                        f"API key for the exchange. {__VIA_ENV} FREQTRADE__EXCHANGE__KEY"
+                    ),
                     "type": "string",
                     "default": "",
                 },
                 "secret": {
-                    "description": "API secret for the exchange.",
+                    "description": (
+                        f"API secret for the exchange. {__VIA_ENV} FREQTRADE__EXCHANGE__SECRET"
+                    ),
                     "type": "string",
                     "default": "",
                 },
                 "password": {
-                    "description": "Password for the exchange, if required.",
+                    "description": (
+                        "Password for the exchange, if required. "
+                        f"{__VIA_ENV} FREQTRADE__EXCHANGE__PASSWORD"
+                    ),
                     "type": "string",
                     "default": "",
                 },
-                "uid": {"description": "User ID for the exchange, if required.", "type": "string"},
+                "uid": {
+                    "description": (
+                        "User ID for the exchange, if required. "
+                        f"{__VIA_ENV} FREQTRADE__EXCHANGE__UID"
+                    ),
+                    "type": "string",
+                },
+                "account_id": {
+                    "description": (
+                        "Account ID for the exchange, if required. "
+                        f"{__VIA_ENV} FREQTRADE__EXCHANGE__ACCOUNT_ID"
+                    ),
+                    "type": "string",
+                },
+                "wallet_address": {
+                    "description": (
+                        "Wallet address for the exchange, if required. "
+                        "Usually used by DEX exchanges. "
+                        f"{__VIA_ENV} FREQTRADE__EXCHANGE__WALLET_ADDRESS"
+                    ),
+                    "type": "string",
+                },
+                "private_key": {
+                    "description": (
+                        "Private key for the exchange, if required. Usually used by DEX exchanges. "
+                        f"{__VIA_ENV} FREQTRADE__EXCHANGE__PRIVATE_KEY"
+                    ),
+                    "type": "string",
+                },
                 "pair_whitelist": {
                     "description": "List of whitelisted trading pairs.",
                     "type": "array",
@@ -837,6 +888,11 @@ CONF_SCHEMA = {
                     "type": "boolean",
                     "default": False,
                 },
+                "enable_ws": {
+                    "description": "Enable WebSocket connections to the exchange.",
+                    "type": "boolean",
+                    "default": True,
+                },
                 "unknown_fee_rate": {
                     "description": "Fee rate for unknown markets.",
                     "type": "number",
@@ -853,29 +909,43 @@ CONF_SCHEMA = {
                 },
                 "ccxt_config": {"description": "CCXT configuration settings.", "type": "object"},
                 "ccxt_async_config": {
-                    "description": "CCXT asynchronous configuration settings.",
+                    "description": (
+                        "CCXT asynchronous configuration settings."
+                        "Usually ccxt_config should be used instead."
+                    ),
+                    "type": "object",
+                },
+                "ccxt_sync_config": {
+                    "description": (
+                        "CCXT synchronous configuration settings. "
+                        "Usually ccxt_config should be used instead."
+                    ),
                     "type": "object",
                 },
             },
             "required": ["name"],
         },
-        "edge": {
+        "logging": {
             "type": "object",
             "properties": {
-                "enabled": {"type": "boolean"},
-                "process_throttle_secs": {"type": "integer", "minimum": 600},
-                "calculate_since_number_of_days": {"type": "integer"},
-                "allowed_risk": {"type": "number"},
-                "stoploss_range_min": {"type": "number"},
-                "stoploss_range_max": {"type": "number"},
-                "stoploss_range_step": {"type": "number"},
-                "minimum_winrate": {"type": "number"},
-                "minimum_expectancy": {"type": "number"},
-                "min_trade_number": {"type": "number"},
-                "max_trade_duration_minute": {"type": "integer"},
-                "remove_pumps": {"type": "boolean"},
+                "version": {"type": "number", "const": 1},
+                "formatters": {
+                    "type": "object",
+                    # In theory the below, but can be more flexible
+                    # based on logging.config documentation
+                    # "additionalProperties": {
+                    #     "type": "object",
+                    #     "properties": {
+                    #         "format": {"type": "string"},
+                    #         "datefmt": {"type": "string"},
+                    #     },
+                    #     "required": ["format"],
+                    # },
+                },
+                "handlers": {"type": "object"},
+                "root": {"type": "object"},
             },
-            "required": ["process_throttle_secs", "allowed_risk"],
+            "required": ["version", "formatters", "handlers", "root"],
         },
         "external_message_consumer": {
             "description": "Configuration for external message consumer.",
@@ -965,10 +1035,13 @@ CONF_SCHEMA = {
                     "type": "boolean",
                     "default": False,
                 },
-                "keras": {
-                    "description": "Use Keras for model training.",
-                    "type": "boolean",
-                    "default": False,
+                "identifier": {
+                    "description": (
+                        "A unique ID for the current model. "
+                        "Must be changed when modifying features."
+                    ),
+                    "type": "string",
+                    "default": "example",
                 },
                 "write_metrics_to_disk": {
                     "description": "Write metrics to disk?",
@@ -1000,13 +1073,42 @@ CONF_SCHEMA = {
                     "type": "number",
                     "default": 7,
                 },
-                "identifier": {
+                "live_retrain_hours": {
+                    "description": "Frequency of retraining during dry/live runs.",
+                    "type": "number",
+                    "default": 0,
+                },
+                "expiration_hours": {
                     "description": (
-                        "A unique ID for the current model. "
-                        "Must be changed when modifying features."
+                        "Avoid making predictions if a model is more than `expiration_hours` "
+                        "old. Defaults to 0 (no expiration)."
                     ),
-                    "type": "string",
-                    "default": "example",
+                    "type": "number",
+                    "default": 0,
+                },
+                "save_backtest_models": {
+                    "description": "Save models to disk when running backtesting.",
+                    "type": "boolean",
+                    "default": False,
+                },
+                "fit_live_predictions_candles": {
+                    "description": (
+                        "Number of historical candles to use for computing target (label) "
+                        "statistics from prediction data, instead of from the training dataset."
+                    ),
+                    "type": "integer",
+                },
+                "data_kitchen_thread_count": {
+                    "description": (
+                        "Designate the number of threads you want to use for data processing "
+                        "(outlier methods, normalization, etc.)."
+                    ),
+                    "type": "integer",
+                },
+                "activate_tensorboard": {
+                    "description": "Indicate whether or not to activate tensorboard",
+                    "type": "boolean",
+                    "default": True,
                 },
                 "wait_for_training_iteration_on_reload": {
                     "description": (
@@ -1014,6 +1116,20 @@ CONF_SCHEMA = {
                     ),
                     "type": "boolean",
                     "default": True,
+                },
+                "continual_learning": {
+                    "description": (
+                        "Use the final state of the most recently trained model "
+                        "as starting point for the new model, allowing for "
+                        "incremental learning."
+                    ),
+                    "type": "boolean",
+                    "default": False,
+                },
+                "keras": {
+                    "description": "Use Keras for model training.",
+                    "type": "boolean",
+                    "default": False,
                 },
                 "feature_parameters": {
                     "description": "The parameters used to engineer the feature set",
@@ -1067,6 +1183,14 @@ CONF_SCHEMA = {
                             ),
                             "type": "boolean",
                             "default": False,
+                        },
+                        "indicator_periods_candles": {
+                            "description": (
+                                "Time periods to calculate indicators for. "
+                                "The indicators are added to the base indicator dataset."
+                            ),
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 1},
                         },
                         "use_SVM_to_remove_outliers": {
                             "description": "Use SVM to remove outliers from the features.",
@@ -1260,7 +1384,8 @@ SCHEMA_BACKTEST_REQUIRED = [
     "dataformat_ohlcv",
     "dataformat_trades",
 ]
-SCHEMA_BACKTEST_REQUIRED_FINAL = SCHEMA_BACKTEST_REQUIRED + [
+SCHEMA_BACKTEST_REQUIRED_FINAL = [
+    *SCHEMA_BACKTEST_REQUIRED,
     "stoploss",
     "minimal_roi",
     "max_open_trades",
@@ -1272,6 +1397,4 @@ SCHEMA_MINIMAL_REQUIRED = [
     "dataformat_ohlcv",
     "dataformat_trades",
 ]
-SCHEMA_MINIMAL_WEBSERVER = SCHEMA_MINIMAL_REQUIRED + [
-    "api_server",
-]
+SCHEMA_MINIMAL_WEBSERVER = [*SCHEMA_MINIMAL_REQUIRED, "api_server"]

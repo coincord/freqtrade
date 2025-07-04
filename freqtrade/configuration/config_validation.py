@@ -6,7 +6,7 @@ from typing import Any
 from jsonschema import Draft4Validator, validators
 from jsonschema.exceptions import ValidationError, best_match
 
-from freqtrade.configuration.config_schema import (
+from freqtrade.config_schema.config_schema import (
     CONF_SCHEMA,
     SCHEMA_BACKTEST_REQUIRED,
     SCHEMA_BACKTEST_REQUIRED_FINAL,
@@ -99,14 +99,12 @@ def validate_config_consistency(conf: dict[str, Any], *, preliminary: bool = Fal
 
 def _validate_unlimited_amount(conf: dict[str, Any]) -> None:
     """
-    If edge is disabled, either max_open_trades or stake_amount need to be set.
+    Either max_open_trades or stake_amount need to be set.
     :raise: ConfigurationError if config validation failed
     """
     if (
-        not conf.get("edge", {}).get("enabled")
-        and conf.get("max_open_trades") == float("inf")
-        and conf.get("stake_amount") == UNLIMITED_STAKE_AMOUNT
-    ):
+        conf.get("max_open_trades") == float("inf") or conf.get("max_open_trades") == -1
+    ) and conf.get("stake_amount") == UNLIMITED_STAKE_AMOUNT:
         raise ConfigurationError("`max_open_trades` and `stake_amount` cannot both be unlimited.")
 
 
@@ -164,12 +162,9 @@ def _validate_edge(conf: dict[str, Any]) -> None:
     Edge and Dynamic whitelist should not both be enabled, since edge overrides dynamic whitelists.
     """
 
-    if not conf.get("edge", {}).get("enabled"):
-        return
-
-    if not conf.get("use_exit_signal", True):
+    if conf.get("edge", {}).get("enabled"):
         raise ConfigurationError(
-            "Edge requires `use_exit_signal` to be True, otherwise no sells will happen."
+            "Edge is no longer supported and has been removed from Freqtrade with 2025.6."
         )
 
 
@@ -361,7 +356,7 @@ def _validate_freqai_include_timeframes(conf: dict[str, Any], preliminary: bool)
         # Ensure that the base timeframe is included in the include_timeframes list
         if not preliminary and main_tf not in freqai_include_timeframes:
             feature_parameters = conf.get("freqai", {}).get("feature_parameters", {})
-            include_timeframes = [main_tf] + freqai_include_timeframes
+            include_timeframes = [main_tf, *freqai_include_timeframes]
             conf.get("freqai", {}).get("feature_parameters", {}).update(
                 {**feature_parameters, "include_timeframes": include_timeframes}
             )

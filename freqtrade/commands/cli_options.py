@@ -83,7 +83,8 @@ AVAILABLE_CLI_OPTIONS = {
         "-d",
         "--datadir",
         "--data-dir",
-        help="Path to directory with historical backtesting data.",
+        help="Path to the base directory of the exchange with historical backtesting data. "
+        "To see futures data, use trading-mode additionally.",
         metavar="PATH",
     ),
     "user_data_dir": Arg(
@@ -203,6 +204,11 @@ AVAILABLE_CLI_OPTIONS = {
         help="Export backtest results (default: trades).",
         choices=constants.EXPORT_OPTIONS,
     ),
+    "backtest_notes": Arg(
+        "--notes",
+        help="Add notes to the backtest results.",
+        metavar="TEXT",
+    ),
     "exportfilename": Arg(
         "--export-filename",
         "--backtest-filename",
@@ -224,7 +230,7 @@ AVAILABLE_CLI_OPTIONS = {
     ),
     "backtest_breakdown": Arg(
         "--breakdown",
-        help="Show backtesting breakdown per [day, week, month].",
+        help="Show backtesting breakdown per [day, week, month, year].",
         nargs="+",
         choices=constants.BACKTEST_BREAKDOWNS,
     ),
@@ -233,13 +239,6 @@ AVAILABLE_CLI_OPTIONS = {
         help="Load a cached backtest result no older than specified age (default: %(default)s).",
         default=constants.BACKTEST_CACHE_DEFAULT,
         choices=constants.BACKTEST_CACHE_AGE,
-    ),
-    # Edge
-    "stoploss_range": Arg(
-        "--stoplosses",
-        help="Defines a range of stoploss values against which edge will assess the strategy. "
-        'The format is "min,max,step" (without any space). '
-        "Example: `--stoplosses=-0.01,-0.1,-0.001`",
     ),
     # Hyperopt
     "hyperopt": Arg(
@@ -260,6 +259,13 @@ AVAILABLE_CLI_OPTIONS = {
         type=check_int_positive,
         metavar="INT",
         default=constants.HYPEROPT_EPOCH,
+    ),
+    "early_stop": Arg(
+        "--early-stop",
+        help="Early stop hyperopt if no improvement after (default: %(default)d) epochs.",
+        type=check_int_positive,
+        metavar="INT",
+        default=0,  # 0 to disable by default
     ),
     "spaces": Arg(
         "--spaces",
@@ -463,7 +469,7 @@ AVAILABLE_CLI_OPTIONS = {
     "format_from_trades": Arg(
         "--format-from",
         help="Source format for data conversion.",
-        choices=constants.AVAILABLE_DATAHANDLERS + ["kraken_csv"],
+        choices=[*constants.AVAILABLE_DATAHANDLERS, "kraken_csv"],
         required=True,
     ),
     "format_from": Arg(
@@ -526,6 +532,15 @@ AVAILABLE_CLI_OPTIONS = {
             "Not specifying this installs the latest version."
         ),
         type=str,
+    ),
+    "ui_prerelease": Arg(
+        "--prerelease",
+        help=(
+            "Install the latest pre-release version of FreqUI. "
+            "This is not recommended for production use."
+        ),
+        action="store_true",
+        default=False,
     ),
     # Templating options
     "template": Arg(

@@ -6,7 +6,6 @@ import pytest
 from numpy import isnan
 from sqlalchemy import select
 
-from freqtrade.edge import PairInfo
 from freqtrade.enums import SignalDirection, State, TradingMode
 from freqtrade.exceptions import ExchangeError, InvalidOrderException, TemporaryError
 from freqtrade.persistence import Order, Trade
@@ -197,7 +196,7 @@ def test_rpc_trade_status(default_conf, ticker, fee, mocker) -> None:
     response.update(
         {
             "max_stake_amount": 0.001,
-            "total_profit_ratio": pytest.approx(-0.00409153),
+            "total_profit_ratio": pytest.approx(-0.00408133),
             "has_open_orders": False,
         }
     )
@@ -228,7 +227,8 @@ def test_rpc_trade_status(default_conf, ticker, fee, mocker) -> None:
     assert results[0] == response_norate
 
 
-def test_rpc_status_table(default_conf, ticker, fee, mocker) -> None:
+def test_rpc_status_table(default_conf, ticker, fee, mocker, time_machine) -> None:
+    time_machine.move_to("2024-05-10 11:15:00 +00:00", tick=False)
     mocker.patch.multiple(
         "freqtrade.rpc.fiat_convert.FtCoinGeckoApi",
         get_price=MagicMock(return_value={"bitcoin": {"usd": 15000.0}}),
@@ -806,19 +806,19 @@ def test_rpc_stop(mocker, default_conf) -> None:
     assert freqtradebot.state == State.STOPPED
 
 
-def test_rpc_stopentry(mocker, default_conf) -> None:
+def test_rpc_pause(mocker, default_conf) -> None:
     mocker.patch("freqtrade.rpc.telegram.Telegram", MagicMock())
     mocker.patch.multiple(EXMS, fetch_ticker=MagicMock())
 
     freqtradebot = get_patched_freqtradebot(mocker, default_conf)
     patch_get_signal(freqtradebot)
     rpc = RPC(freqtradebot)
-    freqtradebot.state = State.RUNNING
+    freqtradebot.state = State.PAUSED
 
-    assert freqtradebot.config["max_open_trades"] != 0
-    result = rpc._rpc_stopentry()
-    assert {"status": "No more entries will occur from now. Run /reload_config to reset."} == result
-    assert freqtradebot.config["max_open_trades"] == 0
+    result = rpc._rpc_pause()
+    assert {
+        "status": "paused, no more entries will occur from now. Run /start to enable entries."
+    } == result
 
 
 def test_rpc_force_exit(default_conf, ticker, fee, mocker) -> None:
@@ -1390,36 +1390,6 @@ def test_rpc_blacklist(mocker, default_conf) -> None:
     assert ret["blacklist_expanded"] == ["ETH/BTC", "XRP/BTC", "XRP/USDT"]
     assert "errors" in ret
     assert isinstance(ret["errors"], dict)
-
-
-def test_rpc_edge_disabled(mocker, default_conf) -> None:
-    mocker.patch("freqtrade.rpc.telegram.Telegram", MagicMock())
-    freqtradebot = get_patched_freqtradebot(mocker, default_conf)
-    rpc = RPC(freqtradebot)
-    with pytest.raises(RPCException, match=r"Edge is not enabled."):
-        rpc._rpc_edge()
-
-
-def test_rpc_edge_enabled(mocker, edge_conf) -> None:
-    mocker.patch("freqtrade.rpc.telegram.Telegram", MagicMock())
-    mocker.patch(
-        "freqtrade.edge.Edge._cached_pairs",
-        mocker.PropertyMock(
-            return_value={
-                "E/F": PairInfo(-0.02, 0.66, 3.71, 0.50, 1.71, 10, 60),
-            }
-        ),
-    )
-    freqtradebot = get_patched_freqtradebot(mocker, edge_conf)
-
-    rpc = RPC(freqtradebot)
-    ret = rpc._rpc_edge()
-
-    assert len(ret) == 1
-    assert ret[0]["Pair"] == "E/F"
-    assert ret[0]["Winrate"] == 0.66
-    assert ret[0]["Expectancy"] == 1.71
-    assert ret[0]["Stoploss"] == -0.02
 
 
 def test_rpc_health(mocker, default_conf) -> None:

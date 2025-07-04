@@ -299,7 +299,7 @@ def test_liquidation_price_binance(
 
     def get_maint_ratio(pair_, stake_amount):
         if pair_ != pair:
-            oc = [c for c in open_trades if c["pair"] == pair_][0]
+            oc = next(c for c in open_trades if c["pair"] == pair_)
             return oc["mm_ratio"], oc["maintenance_amt"]
         return mm_ratio, maintenance_amt
 
@@ -1015,10 +1015,10 @@ async def test__async_get_trade_history_id_binance(default_conf_usdt, mocker, fe
                 # Don't expect to get here
                 raise ValueError("Unexpected call")
                 # return fetch_trades_result[:-2]
-        elif kwargs.get("params", {}).get(exchange._trades_pagination_arg) == "0":
+        elif kwargs.get("params", {}).get(exchange._ft_has["trades_pagination_arg"]) == "0":
             # Return first 3
             return fetch_trades_result[:-2]
-        elif kwargs.get("params", {}).get(exchange._trades_pagination_arg) in (
+        elif kwargs.get("params", {}).get(exchange._ft_has["trades_pagination_arg"]) in (
             fetch_trades_result[-3]["id"],
             1565798399752,
         ):
@@ -1076,10 +1076,10 @@ async def test__async_get_trade_history_id_binance_fast(
             #     # Don't expect to get here
             #     raise ValueError("Unexpected call")
             #     # return fetch_trades_result[:-2]
-        elif kwargs.get("params", {}).get(exchange._trades_pagination_arg) == "0":
+        elif kwargs.get("params", {}).get(exchange._ft_has["trades_pagination_arg"]) == "0":
             # Return first 3
             return fetch_trades_result[:-2]
-        # elif kwargs.get("params", {}).get(exchange._trades_pagination_arg) in (
+        # elif kwargs.get("params", {}).get(exchange._ft_has['trades_pagination_arg']) in (
         #     fetch_trades_result[-3]["id"],
         #     1565798399752,
         # ):

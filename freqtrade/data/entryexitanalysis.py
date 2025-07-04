@@ -281,7 +281,7 @@ def _merge_dfs(
 ):
     merge_on = ["pair", "open_date"]
     signal_wide_indicators = list(set(available_inds) - set(BT_DATA_COLUMNS))
-    columns_to_keep = merge_on + ["enter_reason", "exit_reason"]
+    columns_to_keep = [*merge_on, "enter_reason", "exit_reason"]
 
     if exit_df is None or exit_df.empty or entry_only is True:
         return entry_df[columns_to_keep + available_inds]
@@ -331,7 +331,9 @@ def process_entry_exit_reasons(config: Config):
         exit_only = config.get("exit_only", False)
         do_rejected = config.get("analysis_rejected", False)
         to_csv = config.get("analysis_to_csv", False)
-        csv_path = Path(config.get("analysis_csv_path", config["exportfilename"]))
+        csv_path = Path(
+            config.get("analysis_csv_path", config["exportfilename"]),  # type: ignore[arg-type]
+        )
 
         if entry_only is True and exit_only is True:
             raise OperationalException(

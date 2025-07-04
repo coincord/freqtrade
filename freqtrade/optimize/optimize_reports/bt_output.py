@@ -102,7 +102,9 @@ def text_table_tags(
         [
             *(
                 (
-                    (t["key"] if isinstance(t["key"], list) else [t["key"], ""])
+                    list(t["key"])
+                    if isinstance(t["key"], list | tuple)
+                    else [t["key"], ""]
                     if is_list
                     else [t["key"]]
                 )
@@ -132,18 +134,18 @@ def text_table_periodic_breakdown(
     """
     headers = [
         period.capitalize(),
+        "Trades",
         f"Tot Profit {stake_currency}",
-        "Wins",
-        "Draws",
-        "Losses",
+        "Profit Factor",
+        "Win  Draw  Loss  Win%",
     ]
     output = [
         [
             d["date"],
+            d.get("trades", "N/A"),
             fmt_coin(d["profit_abs"], stake_currency, False),
-            d["wins"],
-            d["draws"],
-            d["loses"],
+            round(d["profit_factor"], 2) if "profit_factor" in d else "N/A",
+            generate_wins_draws_losses(d["wins"], d["draws"], d.get("losses", d.get("loses", 0))),
         ]
         for d in days_breakdown_stats
     ]
@@ -368,8 +370,18 @@ def text_table_add_metrics(strat_results: dict) -> None:
                 f"{strat_results['winning_days']} / "
                 f"{strat_results['draw_days']} / {strat_results['losing_days']}",
             ),
-            ("Avg. Duration Winners", f"{strat_results['winner_holding_avg']}"),
-            ("Avg. Duration Loser", f"{strat_results['loser_holding_avg']}"),
+            (
+                "Min/Max/Avg. Duration Winners",
+                f"{strat_results.get('winner_holding_min', 'N/A')} / "
+                f"{strat_results.get('winner_holding_max', 'N/A')} / "
+                f"{strat_results.get('winner_holding_avg', 'N/A')}",
+            ),
+            (
+                "Min/Max/Avg. Duration Losers",
+                f"{strat_results.get('loser_holding_min', 'N/A')} / "
+                f"{strat_results.get('loser_holding_max', 'N/A')} / "
+                f"{strat_results.get('loser_holding_avg', 'N/A')}",
+            ),
             (
                 "Max Consecutive Wins / Loss",
                 (
@@ -487,33 +499,3 @@ def show_sorted_pairlist(config: Config, backtest_stats: BacktestResultType):
                 if result["key"] != "TOTAL":
                     print(f'"{result["key"]}",  // {result["profit_mean"]:.2%}')
             print("]")
-
-
-def generate_edge_table(results: dict) -> None:
-    tabular_data = []
-    headers = [
-        "Pair",
-        "Stoploss",
-        "Win Rate",
-        "Risk Reward Ratio",
-        "Required Risk Reward",
-        "Expectancy",
-        "Total Number of Trades",
-        "Average Duration (min)",
-    ]
-
-    for result in results.items():
-        if result[1].nb_trades > 0:
-            tabular_data.append(
-                [
-                    result[0],
-                    f"{result[1].stoploss:.10g}",
-                    f"{result[1].winrate:.2f}",
-                    f"{result[1].risk_reward_ratio:.2f}",
-                    f"{result[1].required_risk_reward:.2f}",
-                    f"{result[1].expectancy:.2f}",
-                    result[1].nb_trades,
-                    round(result[1].avg_trade_duration),
-                ]
-            )
-    print_rich_table(tabular_data, headers, summary="EDGE TABLE")

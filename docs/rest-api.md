@@ -190,9 +190,6 @@ delete_trade
 
         :param trade_id: Deletes the trade with this ID from the database.
 
-edge
-	Return information about edge.
-
 forcebuy
 	Buy an asset.
 
@@ -268,6 +265,9 @@ show_config
 start
 	Start the bot if it's in the stopped state.
 
+pause
+	Pause the bot if it's in the running state. If triggered on stopped state will handle open positions.
+
 stats
 	Return the stats report (durations, sell-reasons).
 
@@ -302,6 +302,19 @@ trades
         :param limit: Limits trades to the X last trades. Max 500 trades.
         :param offset: Offset by this amount of trades.
 
+list_open_trades_custom_data
+    Return a dict containing open trades custom-datas
+
+        :param key: str, optional - Key of the custom-data
+        :param limit: Limits trades to X trades.
+        :param offset: Offset by this amount of trades.
+
+list_custom_data
+    Return a dict containing custom-datas of a specified trade
+
+        :param trade_id: int - ID of the trade
+        :param key: str, optional - Key of the custom-data
+
 version
 	Return the version of the bot.
 
@@ -320,6 +333,7 @@ All endpoints in the below table need to be prefixed with the base URL of the AP
 |-----------|--------|--------------------------|
 | `/ping` | GET | Simple command testing the API Readiness - requires no authentication.
 | `/start` | POST | Starts the trader.
+| `/pause` | POST | Pause the trader. Gracefully handle open trades according to their rules. Do not enter new positions.
 | `/stop` | POST | Stops the trader.
 | `/stopbuy` | POST | Stops the trader from opening new trades. Gracefully closes open trades according to their rules.
 | `/reload_config` | POST | Reloads the configuration file.
@@ -351,7 +365,6 @@ All endpoints in the below table need to be prefixed with the base URL of the AP
 | `/blacklist` | GET | Show the current blacklist.
 | `/blacklist` | POST | Adds the specified pair to the blacklist.<br/>*Params:*<br/>- `pair` (`str`)
 | `/blacklist` | DELETE | Deletes the specified list of pairs from the blacklist.<br/>*Params:*<br/>- `[pair,pair]` (`list[str]`) 
-| `/edge` | GET | Show validated pairs by Edge if it is enabled.
 | `/pair_candles` | GET | Returns dataframe for a pair / timeframe combination while the bot is running. **Alpha**
 | `/pair_candles` | POST | Returns dataframe for a pair / timeframe combination while the bot is running, filtered by a provided list of columns to return. **Alpha**<br/>*Params:*<br/>- `<column_list>` (`list[str]`)
 | `/pair_history` | GET | Returns an analyzed dataframe for a given timerange, analyzed by a given strategy. **Alpha**

@@ -189,13 +189,6 @@ class FtRestClient:
         """
         return self._get("monthly", params={"timescale": months} if months else None)
 
-    def edge(self):
-        """Return information about edge.
-
-        :return: json object
-        """
-        return self._get("edge")
-
     def profit(self):
         """Return the profit summary.
 
@@ -255,11 +248,12 @@ class FtRestClient:
         """
         return self._get("logs", params={"limit": limit} if limit else {})
 
-    def trades(self, limit=None, offset=None):
-        """Return trades history, sorted by id
+    def trades(self, limit=None, offset=None, order_by_id=True):
+        """Return trades history, sorted by id (or by latest timestamp if order_by_id=False)
 
         :param limit: Limits trades to the X last trades. Max 500 trades.
         :param offset: Offset by this amount of trades.
+        :param order_by_id: Sort trades by id (default: True). If False, sorts by latest timestamp.
         :return: json object
         """
         params = {}
@@ -267,7 +261,39 @@ class FtRestClient:
             params["limit"] = limit
         if offset:
             params["offset"] = offset
+        if not order_by_id:
+            params["order_by_id"] = False
         return self._get("trades", params)
+
+    def list_open_trades_custom_data(self, key=None, limit=100, offset=0):
+        """List open trades custom-data of the running bot.
+
+        :param key: str, optional - Key of the custom-data
+        :param limit: limit of trades
+        :param offset: trades offset for pagination
+        :return: json object
+        """
+        params = {}
+        params["limit"] = limit
+        params["offset"] = offset
+        if key is not None:
+            params["key"] = key
+
+        return self._get("trades/open/custom-data", params=params)
+
+    def list_custom_data(self, trade_id, key=None):
+        """List custom-data of the running bot for a specific trade.
+
+        :param trade_id: ID of the trade
+        :param key: str, optional - Key of the custom-data
+        :return: JSON object
+        """
+        params = {}
+        params["trade_id"] = trade_id
+        if key is not None:
+            params["key"] = key
+
+        return self._get(f"trades/{trade_id}/custom-data", params=params)
 
     def trade(self, trade_id):
         """Return specific trade

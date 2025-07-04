@@ -25,6 +25,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
+    Message,
     ReplyKeyboardMarkup,
     Update,
 )
@@ -96,17 +97,17 @@ def authorized_only(command_handler: Callable[..., Coroutine[Any, Any, None]]):
     """
 
     @wraps(command_handler)
-    async def wrapper(self, *args, **kwargs):
+    async def wrapper(self, *args, **kwargs) -> None:
         """Decorator logic"""
         update = kwargs.get("update") or args[0]
 
         # Reject unauthorized messages
-        if update.callback_query:
-            cchat_id = int(update.callback_query.message.chat.id)
-            ctopic_id = update.callback_query.message.message_thread_id
-        else:
-            cchat_id = int(update.message.chat_id)
-            ctopic_id = update.message.message_thread_id
+        message: Message = (
+            update.message if update.callback_query is None else update.callback_query.message
+        )
+        cchat_id: int = int(message.chat_id)
+        ctopic_id: int | None = message.message_thread_id
+        from_user_id: str = str(update.effective_user.id if update.effective_user else "")
 
         chat_id = int(self._config["telegram"]["chat_id"])
         if cchat_id != chat_id:
@@ -118,6 +119,10 @@ def authorized_only(command_handler: Callable[..., Coroutine[Any, Any, None]]):
                 logger.debug(f"Rejected message from wrong channel: {cchat_id}, {ctopic_id}")
                 return None
 
+        authorized = self._config["telegram"].get("authorized_users", None)
+        if authorized is not None and from_user_id not in authorized:
+            logger.info(f"Unauthorized user tried to control the bot: {from_user_id}")
+            return None
         # Rollback session to avoid getting data stored in a transaction.
         Trade.rollback()
         logger.debug("Executing handler: %s for chat_id: %s", command_handler.__name__, chat_id)
@@ -173,6 +178,7 @@ class Telegram(RPCHandler):
         #       problem in _help()).
         valid_keys: list[str] = [
             r"/start$",
+            r"/pause$",
             r"/stop$",
             r"/status$",
             r"/status table$",
@@ -209,7 +215,6 @@ class Telegram(RPCHandler):
             r"/forceshort$",
             r"/forcesell$",
             r"/forceexit$",
-            r"/edge$",
             r"/health$",
             r"/help$",
             r"/version$",
@@ -288,12 +293,11 @@ class Telegram(RPCHandler):
             CommandHandler(["unlock", "delete_locks"], self._delete_locks),
             CommandHandler(["reload_config", "reload_conf"], self._reload_config),
             CommandHandler(["show_config", "show_conf"], self._show_config),
-            CommandHandler(["stopbuy", "stopentry"], self._stopentry),
+            CommandHandler(["stopbuy", "stopentry", "pause"], self._pause),
             CommandHandler("whitelist", self._whitelist),
             CommandHandler("blacklist", self._blacklist),
             CommandHandler(["blacklist_delete", "bl_delete"], self._blacklist_delete),
             CommandHandler("logs", self._logs),
-            CommandHandler("edge", self._edge),
             CommandHandler("health", self._health),
             CommandHandler("help", self._help),
             CommandHandler("version", self._version),
@@ -1038,12 +1042,15 @@ class Telegram(RPCHandler):
         else:
             # Message to display
             if stats["closed_trade_count"] > 0:
+                fiat_closed_trades = (
+                    f"∙ `{fmt_coin(profit_closed_fiat, fiat_disp_cur)}`\n" if fiat_disp_cur else ""
+                )
                 markdown_msg = (
                     "*ROI:* Closed trades\n"
                     f"∙ `{fmt_coin(profit_closed_coin, stake_cur)} "
                     f"({profit_closed_ratio_mean:.2%}) "
                     f"({profit_closed_percent} \N{GREEK CAPITAL LETTER SIGMA}%)`\n"
-                    f"∙ `{fmt_coin(profit_closed_fiat, fiat_disp_cur)}`\n"
+                    f"{fiat_closed_trades}"
                 )
             else:
                 markdown_msg = "`No closed trade` \n"
@@ -1218,10 +1225,13 @@ class Telegram(RPCHandler):
         total_stake = fmt_coin(
             result["total" if full_result else "total_bot"], result["stake"], False
         )
+        fiat_estimated_value = (
+            f"\t`{result['symbol']}: {value}`{fiat_val}\n" if result["symbol"] else ""
+        )
         output += (
             f"\n*Estimated Value{' (Bot managed assets only)' if not full_result else ''}*:\n"
             f"\t`{result['stake']}: {total_stake}`{stake_improve}\n"
-            f"\t`{result['symbol']}: {value}`{fiat_val}\n"
+            f"{fiat_estimated_value}"
         )
         await self._send_msg(
             output, reload_able=True, callback_path="update_balance", query=update.callback_query
@@ -1264,15 +1274,15 @@ class Telegram(RPCHandler):
         await self._send_msg(f"Status: `{msg['status']}`")
 
     @authorized_only
-    async def _stopentry(self, update: Update, context: CallbackContext) -> None:
+    async def _pause(self, update: Update, context: CallbackContext) -> None:
         """
-        Handler for /stop_buy.
-        Sets max_open_trades to 0 and gracefully sells all open trades
+        Handler for /stop_buy /stop_entry and /pause.
+        Sets bot state to paused
         :param bot: telegram bot
         :param update: message update
         :return: None
         """
-        msg = self._rpc._rpc_stopentry()
+        msg = self._rpc._rpc_pause()
         await self._send_msg(f"Status: `{msg['status']}`")
 
     @authorized_only
@@ -1784,23 +1794,6 @@ class Telegram(RPCHandler):
             await self._send_msg(msgs, parse_mode=ParseMode.MARKDOWN_V2)
 
     @authorized_only
-    async def _edge(self, update: Update, context: CallbackContext) -> None:
-        """
-        Handler for /edge
-        Shows information related to Edge
-        """
-        edge_pairs = self._rpc._rpc_edge()
-        if not edge_pairs:
-            message = "<b>Edge only validated following pairs:</b>"
-            await self._send_msg(message, parse_mode=ParseMode.HTML)
-
-        for chunk in chunks(edge_pairs, 25):
-            edge_pairs_tab = tabulate(chunk, headers="keys", tablefmt="simple")
-            message = f"<b>Edge only validated following pairs:</b>\n<pre>{edge_pairs_tab}</pre>"
-
-            await self._send_msg(message, parse_mode=ParseMode.HTML)
-
-    @authorized_only
     async def _help(self, update: Update, context: CallbackContext) -> None:
         """
         Handler for /help.
@@ -1824,6 +1817,7 @@ class Telegram(RPCHandler):
             "_Bot Control_\n"
             "------------\n"
             "*/start:* `Starts the trader`\n"
+            "*/pause:* `Pause the new entries for trader, but handles open trades gracefully`\n"
             "*/stop:* `Stops the trader`\n"
             "*/stopentry:* `Stops entering, but handles open trades gracefully` \n"
             "*/forceexit <trade_id>|all:* `Instantly exits the given trade or all trades, "
@@ -1851,7 +1845,6 @@ class Telegram(RPCHandler):
             "*/balance total:* `Show account balance per currency`\n"
             "*/logs [limit]:* `Show latest logs - defaults to 10` \n"
             "*/count:* `Show number of active trades compared to allowed number of trades`\n"
-            "*/edge:* `Shows validated pairs by Edge if it is enabled` \n"
             "*/health* `Show latest process timestamp - defaults to 1970-01-01 00:00:00` \n"
             "*/marketdir [long | short | even | none]:* `Updates the user managed variable "
             "that represents the current market direction. If no direction is provided `"
@@ -1976,16 +1969,17 @@ class Telegram(RPCHandler):
             results = self._rpc._rpc_list_custom_data(trade_id, key)
             messages = []
             if len(results) > 0:
-                messages.append("Found custom-data entr" + ("ies: " if len(results) > 1 else "y: "))
-                for result in results:
+                trade_custom_data = results[0]["custom_data"]
+                messages.append(
+                    "Found custom-data entr" + ("ies: " if len(trade_custom_data) > 1 else "y: ")
+                )
+                for custom_data in trade_custom_data:
                     lines = [
-                        f"*Key:* `{result['cd_key']}`",
-                        f"*ID:* `{result['id']}`",
-                        f"*Trade ID:* `{result['ft_trade_id']}`",
-                        f"*Type:* `{result['cd_type']}`",
-                        f"*Value:* `{result['cd_value']}`",
-                        f"*Create Date:* `{format_date(result['created_at'])}`",
-                        f"*Update Date:* `{format_date(result['updated_at'])}`",
+                        f"*Key:* `{custom_data['key']}`",
+                        f"*Type:* `{custom_data['type']}`",
+                        f"*Value:* `{custom_data['value']}`",
+                        f"*Create Date:* `{format_date(custom_data['created_at'])}`",
+                        f"*Update Date:* `{format_date(custom_data['updated_at'])}`",
                     ]
                     # Filter empty lines using list-comprehension
                     messages.append("\n".join([line for line in lines if line]))
@@ -2153,6 +2147,9 @@ class Telegram(RPCHandler):
             return
         chat_id = update.message.chat_id
         topic_id = update.message.message_thread_id
+        user_id = (
+            update.effective_user.id if topic_id is not None and update.effective_user else None
+        )
 
         msg = f"""Freqtrade Bot Info:
         ```json
@@ -2160,7 +2157,8 @@ class Telegram(RPCHandler):
                 "enabled": true,
                 "token": "********",
                 "chat_id": "{chat_id}",
-                {f'"topic_id": "{topic_id}"' if topic_id else ""}
+                {f'"topic_id": "{topic_id}",' if topic_id else ""}
+                {f'//"authorized_users": ["{user_id}"]' if topic_id and user_id else ""}
             }}
         ```
         """

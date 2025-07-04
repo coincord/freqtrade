@@ -32,9 +32,10 @@ from freqtrade.enums import (
 from freqtrade.exceptions import ExchangeError, PricingError
 from freqtrade.exchange import Exchange, timeframe_to_minutes, timeframe_to_msecs
 from freqtrade.exchange.exchange_utils import price_to_precision
+from freqtrade.ft_types import AnnotationType
 from freqtrade.loggers import bufferHandler
-from freqtrade.persistence import KeyStoreKeys, KeyValueStore, PairLocks, Trade
-from freqtrade.persistence.models import PairLock
+from freqtrade.persistence import CustomDataWrapper, KeyValueStore, PairLocks, Trade
+from freqtrade.persistence.models import PairLock, custom_data_rpc_wrapper
 from freqtrade.plugins.pairlist.pairlist_helpers import expand_pairlist
 from freqtrade.rpc.fiat_convert import CryptoToFiatConverter
 from freqtrade.rpc.rpc_types import RPCSendMsg
@@ -635,7 +636,7 @@ class RPC:
         first_date = trades[0].open_date_utc if trades else None
         last_date = trades[-1].open_date_utc if trades else None
         num = float(len(durations) or 1)
-        bot_start = KeyValueStore.get_datetime_value(KeyStoreKeys.BOT_START_TIME)
+        bot_start = KeyValueStore.get_datetime_value("bot_start_time")
         return {
             "profit_closed_coin": profit_closed_coin_sum,
             "profit_closed_percent_mean": round(profit_closed_ratio_mean * 100, 2),
@@ -838,7 +839,7 @@ class RPC:
 
     def _rpc_stop(self) -> dict[str, str]:
         """Handler for stop"""
-        if self._freqtrade.state == State.RUNNING:
+        if self._freqtrade.state != State.STOPPED:
             self._freqtrade.state = State.STOPPED
             return {"status": "stopping trader ..."}
 
@@ -849,16 +850,25 @@ class RPC:
         self._freqtrade.state = State.RELOAD_CONFIG
         return {"status": "Reloading config ..."}
 
-    def _rpc_stopentry(self) -> dict[str, str]:
+    def _rpc_pause(self) -> dict[str, str]:
         """
-        Handler to stop buying, but handle open trades gracefully.
+        Handler to pause trading (stop entering new trades), but handle open trades gracefully.
         """
         if self._freqtrade.state == State.RUNNING:
-            # Set 'max_open_trades' to 0
-            self._freqtrade.config["max_open_trades"] = 0
-            self._freqtrade.strategy.max_open_trades = 0
+            self._freqtrade.state = State.PAUSED
 
-        return {"status": "No more entries will occur from now. Run /reload_config to reset."}
+        if self._freqtrade.state == State.STOPPED:
+            self._freqtrade.state = State.PAUSED
+            return {
+                "status": (
+                    "starting bot with trader in paused state, no entries will occur. "
+                    "Run /start to enable entries."
+                )
+            }
+
+        return {
+            "status": "paused, no more entries will occur from now. Run /start to enable entries."
+        }
 
     def _rpc_reload_trade_from_exchange(self, trade_id: int) -> dict[str, str]:
         """
@@ -930,7 +940,7 @@ class RPC:
         Sells the given trade at current price
         """
 
-        if self._freqtrade.state != State.RUNNING:
+        if self._freqtrade.state == State.STOPPED:
             raise RPCException("trader is not running")
 
         with self._freqtrade._exit_lock:
@@ -1046,7 +1056,7 @@ class RPC:
                 raise RPCException(f"Failed to enter position for {pair}.")
 
     def _rpc_cancel_open_order(self, trade_id: int):
-        if self._freqtrade.state != State.RUNNING:
+        if self._freqtrade.state == State.STOPPED:
             raise RPCException("trader is not running")
         with self._freqtrade._exit_lock:
             # Query for trade
@@ -1115,31 +1125,72 @@ class RPC:
                 "cancel_order_count": c_count,
             }
 
-    def _rpc_list_custom_data(self, trade_id: int, key: str | None) -> list[dict[str, Any]]:
-        # Query for trade
-        trade = Trade.get_trades(trade_filter=[Trade.id == trade_id]).first()
-        if trade is None:
-            return []
-        # Query custom_data
-        custom_data = []
-        if key:
-            data = trade.get_custom_data(key=key)
-            if data:
-                custom_data = [data]
+    @custom_data_rpc_wrapper
+    def _rpc_list_custom_data(
+        self, trade_id: int | None = None, key: str | None = None, limit: int = 100, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch custom data for a specific trade, or all open trades if `trade_id` is not provided.
+        Pagination is applied via `limit` and `offset`.
+
+        Returns an array of dictionaries, each containing:
+        - "trade_id": the ID of the trade (int)
+        - "custom_data": a list of custom data dicts, each with the fields:
+                "id", "key", "type", "value", "created_at", "updated_at"
+        """
+
+        trades: Sequence[Trade]
+        if trade_id is None:
+            # Get all open trades
+            trades = Trade.session.scalars(
+                Trade.get_trades_query([Trade.is_open.is_(True)])
+                .order_by(Trade.id)
+                .limit(limit)
+                .offset(offset)
+            ).all()
         else:
-            custom_data = trade.get_all_custom_data()
-        return [
-            {
-                "id": data_entry.id,
-                "ft_trade_id": data_entry.ft_trade_id,
-                "cd_key": data_entry.cd_key,
-                "cd_type": data_entry.cd_type,
-                "cd_value": data_entry.cd_value,
-                "created_at": data_entry.created_at,
-                "updated_at": data_entry.updated_at,
-            }
-            for data_entry in custom_data
-        ]
+            trades = Trade.get_trades(trade_filter=[Trade.id == trade_id]).all()
+
+        if not trades:
+            raise RPCException(
+                f"No trade found for trade_id: {trade_id}" if trade_id else "No open trades found."
+            )
+
+        results = []
+        for trade in trades:
+            # Depending on whether a specific key is provided, retrieve custom data accordingly.
+            if key:
+                data = trade.get_custom_data_entry(key=key)
+                # If data exists, wrap it in a list so the output remains consistent.
+                custom_data = [data] if data else []
+            else:
+                custom_data = trade.get_all_custom_data()
+
+            # Format and Append result for the trade if any custom data was found.
+            if custom_data:
+                formatted_custom_data = [
+                    {
+                        "key": data_entry.cd_key,
+                        "type": data_entry.cd_type,
+                        "value": CustomDataWrapper._convert_custom_data(data_entry).value,
+                        "created_at": data_entry.created_at,
+                        "updated_at": data_entry.updated_at,
+                    }
+                    for data_entry in custom_data
+                ]
+                results.append({"trade_id": trade.id, "custom_data": formatted_custom_data})
+
+            # Handle case when there is no custom data found across trades.
+            if not results:
+                message_details = ""
+                if key:
+                    message_details += f"with key '{key}' "
+                message_details += (
+                    f"found for Trade ID: {trade_id}." if trade_id else "found for any open trades."
+                )
+                raise RPCException(f"No custom-data {message_details}")
+
+        return results
 
     def _rpc_performance(self) -> list[dict[str, Any]]:
         """
@@ -1175,7 +1226,7 @@ class RPC:
 
     def _rpc_count(self) -> dict[str, float]:
         """Returns the number of trades running"""
-        if self._freqtrade.state != State.RUNNING:
+        if self._freqtrade.state == State.STOPPED:
             raise RPCException("trader is not running")
 
         trades = Trade.get_open_trades()
@@ -1294,12 +1345,6 @@ class RPC:
 
         return {"log_count": len(records), "logs": records}
 
-    def _rpc_edge(self) -> list[dict[str, Any]]:
-        """Returns information related to Edge"""
-        if not self._freqtrade.edge:
-            raise RPCException("Edge is not enabled.")
-        return self._freqtrade.edge.accepted_pairs()
-
     @staticmethod
     def _convert_dataframe_to_dict(
         strategy: str,
@@ -1308,6 +1353,7 @@ class RPC:
         dataframe: DataFrame,
         last_analyzed: datetime,
         selected_cols: list[str] | None,
+        annotations: list[AnnotationType],
     ) -> dict[str, Any]:
         has_content = len(dataframe) != 0
         dataframe_columns = list(dataframe.columns)
@@ -1363,6 +1409,7 @@ class RPC:
             "data_start_ts": 0,
             "data_stop": "",
             "data_stop_ts": 0,
+            "annotations": annotations,
         }
         if has_content:
             res.update(
@@ -1381,8 +1428,16 @@ class RPC:
         """Analyzed dataframe in Dict form"""
 
         _data, last_analyzed = self.__rpc_analysed_dataframe_raw(pair, timeframe, limit)
+        annotations = self._freqtrade.strategy.ft_plot_annotations(pair=pair, dataframe=_data)
+
         return RPC._convert_dataframe_to_dict(
-            self._freqtrade.config["strategy"], pair, timeframe, _data, last_analyzed, selected_cols
+            self._freqtrade.config["strategy"],
+            pair,
+            timeframe,
+            _data,
+            last_analyzed,
+            selected_cols,
+            annotations,
         )
 
     def __rpc_analysed_dataframe_raw(
@@ -1483,6 +1538,7 @@ class RPC:
                 )
             data = _data[pair]
 
+        annotations = []
         if config.get("strategy"):
             strategy.dp = DataProvider(config, exchange=exchange, pairlists=None)
             strategy.ft_bot_start()
@@ -1491,6 +1547,8 @@ class RPC:
             df_analyzed = trim_dataframe(
                 df_analyzed, timerange_parsed, startup_candles=startup_candles
             )
+            annotations = strategy.ft_plot_annotations(pair=pair, dataframe=df_analyzed)
+
         else:
             df_analyzed = data
 
@@ -1501,6 +1559,7 @@ class RPC:
             df_analyzed.copy(),
             dt_now(),
             selected_cols,
+            annotations,
         )
 
     def _rpc_plot_config(self) -> dict[str, Any]:
@@ -1553,7 +1612,7 @@ class RPC:
                 }
             )
 
-        if bot_start := KeyValueStore.get_datetime_value(KeyStoreKeys.BOT_START_TIME):
+        if bot_start := KeyValueStore.get_datetime_value("bot_start_time"):
             res.update(
                 {
                     "bot_start": str(bot_start),
@@ -1561,7 +1620,7 @@ class RPC:
                     "bot_start_ts": int(bot_start.timestamp()),
                 }
             )
-        if bot_startup := KeyValueStore.get_datetime_value(KeyStoreKeys.STARTUP_TIME):
+        if bot_startup := KeyValueStore.get_datetime_value("startup_time"):
             res.update(
                 {
                     "bot_startup": str(bot_startup),

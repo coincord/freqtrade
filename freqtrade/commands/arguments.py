@@ -21,6 +21,8 @@ ARGS_COMMON = [
     "user_data_dir",
 ]
 
+ARGS_MAIN = ["version_main"]
+
 ARGS_STRATEGY = [
     "strategy",
     "strategy_path",
@@ -43,7 +45,8 @@ ARGS_COMMON_OPTIMIZE = [
     "pairs",
 ]
 
-ARGS_BACKTEST = ARGS_COMMON_OPTIMIZE + [
+ARGS_BACKTEST = [
+    *ARGS_COMMON_OPTIMIZE,
     "position_stacking",
     "enable_protections",
     "dry_run_wallet",
@@ -54,9 +57,11 @@ ARGS_BACKTEST = ARGS_COMMON_OPTIMIZE + [
     "backtest_breakdown",
     "backtest_cache",
     "freqai_backtest_live_models",
+    "backtest_notes",
 ]
 
-ARGS_HYPEROPT = ARGS_COMMON_OPTIMIZE + [
+ARGS_HYPEROPT = [
+    *ARGS_COMMON_OPTIMIZE,
     "hyperopt",
     "hyperopt_path",
     "position_stacking",
@@ -74,9 +79,10 @@ ARGS_HYPEROPT = ARGS_COMMON_OPTIMIZE + [
     "disableparamexport",
     "hyperopt_ignore_missing_space",
     "analyze_per_epoch",
+    "early_stop",
 ]
 
-ARGS_EDGE = ARGS_COMMON_OPTIMIZE + ["stoploss_range"]
+ARGS_EDGE = [*ARGS_COMMON_OPTIMIZE]
 
 ARGS_LIST_STRATEGIES = [
     "strategy_path",
@@ -125,7 +131,7 @@ ARGS_BUILD_STRATEGY = ["user_data_dir", "strategy", "strategy_path", "template"]
 
 ARGS_CONVERT_DATA_TRADES = ["pairs", "format_from_trades", "format_to", "erase", "exchange"]
 ARGS_CONVERT_DATA = ["pairs", "format_from", "format_to", "erase", "exchange"]
-ARGS_CONVERT_DATA_OHLCV = ARGS_CONVERT_DATA + ["timeframes", "trading_mode", "candle_types"]
+ARGS_CONVERT_DATA_OHLCV = [*ARGS_CONVERT_DATA, "timeframes", "trading_mode", "candle_types"]
 
 ARGS_CONVERT_TRADES = [
     "pairs",
@@ -191,7 +197,7 @@ ARGS_PLOT_PROFIT = [
 
 ARGS_CONVERT_DB = ["db_url", "db_url_from"]
 
-ARGS_INSTALL_UI = ["erase_ui_only", "ui_version"]
+ARGS_INSTALL_UI = ["erase_ui_only", "ui_prerelease", "ui_version"]
 
 ARGS_SHOW_TRADES = ["db_url", "trade_ids", "print_json"]
 
@@ -245,7 +251,7 @@ ARGS_STRATEGY_UPDATER = ["strategy_list", "strategy_path", "recursive_strategy_s
 ARGS_LOOKAHEAD_ANALYSIS = [
     a
     for a in ARGS_BACKTEST
-    if a not in ("position_stacking", "backtest_cache", "backtest_breakdown")
+    if a not in ("position_stacking", "backtest_cache", "backtest_breakdown", "backtest_notes")
 ] + ["minimum_trade_amount", "targeted_trade_amount", "lookahead_analysis_exportfilename"]
 
 ARGS_RECURSIVE_ANALYSIS = ["timeframe", "timerange", "dataformat_ohlcv", "pairs", "startup_candle"]
@@ -347,7 +353,7 @@ class Arguments:
         self.parser = ArgumentParser(
             prog="freqtrade", description="Free, open source crypto trading bot"
         )
-        self._build_args(optionlist=["version_main"], parser=self.parser)
+        self._build_args(optionlist=ARGS_MAIN, parser=self.parser)
 
         from freqtrade.commands import (
             start_analysis_entries_exits,
@@ -500,7 +506,9 @@ class Arguments:
 
         # Add edge subcommand
         edge_cmd = subparsers.add_parser(
-            "edge", help="Edge module.", parents=[_common_parser, _strategy_parser]
+            "edge",
+            help="Edge module. No longer part of Freqtrade",
+            parents=[_common_parser, _strategy_parser],
         )
         edge_cmd.set_defaults(func=start_edge)
         self._build_args(optionlist=ARGS_EDGE, parser=edge_cmd)

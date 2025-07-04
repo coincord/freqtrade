@@ -16,8 +16,7 @@ from xdist.scheduler.loadscope import LoadScopeScheduling
 from freqtrade import constants
 from freqtrade.commands import Arguments
 from freqtrade.data.converter import ohlcv_to_dataframe, trades_list_to_df
-from freqtrade.edge import PairInfo
-from freqtrade.enums import CandleType, MarginMode, RunMode, SignalDirection, TradingMode
+from freqtrade.enums import CandleType, MarginMode, SignalDirection, TradingMode
 from freqtrade.exchange import Exchange, timeframe_to_minutes, timeframe_to_seconds
 from freqtrade.freqtradebot import FreqtradeBot
 from freqtrade.persistence import LocalTrade, Order, Trade, init_db
@@ -48,7 +47,7 @@ from tests.conftest_trades_usdt import (
 logging.getLogger("").setLevel(logging.INFO)
 
 
-# Do not mask numpy errors as warnings that no one read, raise the exсeption
+# Do not mask numpy errors as warnings that no one read, raise the exception
 np.seterr(all="raise")
 
 CURRENT_TEST_STRATEGY = "StrategyTestV3"
@@ -165,7 +164,7 @@ def generate_trades_history(n_rows, start_date: datetime | None = None, days=5):
     )
     df["date"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df = df.sort_values("timestamp").reset_index(drop=True)
-    assert list(df.columns) == constants.DEFAULT_TRADES_COLUMNS + ["date"]
+    assert list(df.columns) == [*constants.DEFAULT_TRADES_COLUMNS, "date"]
     return df
 
 
@@ -296,24 +295,6 @@ def patch_whitelist(mocker, conf) -> None:
         "freqtrade.freqtradebot.FreqtradeBot._refresh_active_whitelist",
         MagicMock(return_value=conf["exchange"]["pair_whitelist"]),
     )
-
-
-def patch_edge(mocker) -> None:
-    # "ETH/BTC",
-    # "LTC/BTC",
-    # "XRP/BTC",
-    # "NEO/BTC"
-
-    mocker.patch(
-        "freqtrade.edge.Edge._cached_pairs",
-        mocker.PropertyMock(
-            return_value={
-                "NEO/BTC": PairInfo(-0.20, 0.66, 3.71, 0.50, 1.71, 10, 25),
-                "LTC/BTC": PairInfo(-0.21, 0.66, 3.71, 0.50, 1.71, 11, 20),
-            }
-        ),
-    )
-    mocker.patch("freqtrade.edge.Edge.calculate", MagicMock(return_value=True))
 
 
 # Functions for recurrent object patching
@@ -549,6 +530,14 @@ def user_dir(mocker, tmp_path) -> Path:
     return user_dir
 
 
+@pytest.fixture()
+def keep_log_config_loggers(mocker):
+    # Mock the _handle_existing_loggers function to prevent it from disabling all loggers.
+    # This is necessary to keep all loggers active, and avoid random failures if
+    # this file is ran before the test_rest_client file.
+    mocker.patch("logging.config._handle_existing_loggers")
+
+
 @pytest.fixture(autouse=True)
 def patch_coingecko(mocker) -> None:
     """
@@ -644,6 +633,7 @@ def get_default_conf(testdatadir):
         "trading_mode": "spot",
         "margin_mode": "",
         "candle_type_def": CandleType.SPOT,
+        "original_config": {},
     }
     return configuration
 
@@ -2592,31 +2582,6 @@ def buy_order_fee():
         "status": "closed",
         "fee": None,
     }
-
-
-@pytest.fixture(scope="function")
-def edge_conf(default_conf):
-    conf = deepcopy(default_conf)
-    conf["runmode"] = RunMode.DRY_RUN
-    conf["max_open_trades"] = -1
-    conf["tradable_balance_ratio"] = 0.5
-    conf["stake_amount"] = constants.UNLIMITED_STAKE_AMOUNT
-    conf["edge"] = {
-        "enabled": True,
-        "process_throttle_secs": 1800,
-        "calculate_since_number_of_days": 14,
-        "allowed_risk": 0.01,
-        "stoploss_range_min": -0.01,
-        "stoploss_range_max": -0.1,
-        "stoploss_range_step": -0.01,
-        "maximum_winrate": 0.80,
-        "minimum_expectancy": 0.20,
-        "min_trade_number": 15,
-        "max_trade_duration_minute": 1440,
-        "remove_pumps": False,
-    }
-
-    return conf
 
 
 @pytest.fixture

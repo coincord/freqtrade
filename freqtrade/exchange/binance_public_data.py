@@ -160,8 +160,8 @@ async def _download_archive_ohlcv(
                         return concat_safe(dfs)
                     else:
                         dfs.append(None)
-                except BaseException as e:
-                    logger.warning(f"An exception raised: : {e}")
+                except Exception as e:
+                    logger.warning(f"An exception raised: {e}")
                     # Directly return the existing data, do not allow the gap within the data
                     await cancel_and_await_tasks(tasks[tasks.index(task) + 1 :])
                     return concat_safe(dfs)
@@ -285,7 +285,11 @@ async def get_daily_ohlcv(
                                 names=["date", "open", "high", "low", "close", "volume"],
                                 header=header,
                             )
-                            df["date"] = pd.to_datetime(df["date"], unit="ms", utc=True)
+                            df["date"] = pd.to_datetime(
+                                np.where(df["date"] > 1e13, df["date"] // 1000, df["date"]),
+                                unit="ms",
+                                utc=True,
+                            )
                             return df
                 elif resp.status == 404:
                     logger.debug(f"Failed to download {url}")
@@ -374,7 +378,7 @@ def parse_trades_from_zip(csvf):
     df.loc[:, "type"] = None
     # Convert timestamp to ms
     df.loc[:, "timestamp"] = np.where(
-        df["timestamp"] > 10000000000000,
+        df["timestamp"] > 1e13,
         df["timestamp"] // 1000,
         df["timestamp"],
     )
@@ -487,8 +491,8 @@ async def _download_archive_trades(
                             )
                         await cancel_and_await_tasks(tasks[tasks.index(task) + 1 :])
                         return results
-                except BaseException as e:
-                    logger.warning(f"An exception raised: : {e}")
+                except Exception as e:
+                    logger.warning(f"An exception raised: {e}")
                     # Directly return the existing data, do not allow the gap within the data
                     await cancel_and_await_tasks(tasks[tasks.index(task) + 1 :])
                     return results

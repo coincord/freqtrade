@@ -5,7 +5,7 @@ from pydantic import AwareDatetime, BaseModel, RootModel, SerializeAsAny, model_
 
 from freqtrade.constants import DL_DATA_TIMEFRAMES, IntOrInf
 from freqtrade.enums import MarginMode, OrderTypeValues, SignalDirection, TradingMode
-from freqtrade.ft_types import ValidExchangesType
+from freqtrade.ft_types import AnnotationType, ValidExchangesType
 from freqtrade.rpc.api_server.webserver_bgwork import ProgressTask
 
 
@@ -539,6 +539,7 @@ class PairHistory(BaseModel):
     columns: list[str]
     all_columns: list[str] = []
     data: SerializeAsAny[list[Any]]
+    annotations: list[AnnotationType] | None = None
     length: int
     buy_signals: int
     sell_signals: int
@@ -637,3 +638,16 @@ class Health(BaseModel):
     bot_start_ts: int | None = None
     bot_startup: datetime | None = None
     bot_startup_ts: int | None = None
+
+
+class CustomDataEntry(BaseModel):
+    key: str
+    type: str
+    value: Any
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class ListCustomData(BaseModel):
+    trade_id: int
+    custom_data: list[CustomDataEntry]

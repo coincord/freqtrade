@@ -618,7 +618,7 @@ class IFreqaiModel(ABC):
         )
 
         unfiltered_dataframe = dk.use_strategy_to_populate_indicators(
-            strategy, corr_dataframes, base_dataframes, pair
+            strategy, corr_dataframes=corr_dataframes, base_dataframes=base_dataframes, pair=pair
         )
 
         trained_timestamp = new_trained_timerange.stopts
@@ -763,6 +763,8 @@ class IFreqaiModel(ABC):
             init_model = None
         else:
             init_model = self.dd.model_dictionary[pair]
+            # Set "fresh" tb_logger - the one in model_dictionary has the writer closed.
+            init_model.tb_logger = self.tb_logger
 
         return init_model
 
